@@ -46,12 +46,12 @@ jobs:
         with:
           path: collector
 
-      # 私有归档仓库通过 deploy key（仅授权 fc3d-archive，可写）检出；
+      # 私有归档仓库通过 deploy key（仅授权 mitu3d-archive，可写）检出；
       # 采集结果直接 commit + push 到该仓库，本仓库不存数据。
       - name: Checkout private archive
         uses: actions/checkout@v4
         with:
-          repository: suwei8/fc3d-archive
+          repository: suwei8/mitu3d-archive
           ssh-key: ${{ secrets.ARCHIVE_SSH_KEY }}
           path: archive
 
