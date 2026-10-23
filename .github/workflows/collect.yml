@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: suwei8/mitu3d-archive
-          ssh-key: ${{ secrets.ARCHIVE_SSH_KEY }}
+          token: ${{ secrets.ARCHIVE_PAT }}
           path: archive
 
       - uses: actions/setup-python@v5
