@@ -428,8 +428,12 @@ def render_md(record: dict[str, Any]) -> str:
         f"> 当前状态：**{status}**",
         "",
     ]
-    if record.get("draw_result"):
-        lines.extend([f"> 开奖号：**{record['draw_result']}**", ""])
+    draw = record.get("draw_result")
+    # draw_result 两种形态：纯号码字符串，或 user_report 对象 {"kaijiang": "085", ...}
+    if isinstance(draw, dict):
+        draw = draw.get("kaijiang") or None
+    if draw:
+        lines.extend([f"> 开奖号：**{draw}**", ""])
     lines.extend([
         "| 字段 | 数据 |",
         "| --- | --- |",
