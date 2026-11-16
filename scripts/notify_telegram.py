@@ -43,6 +43,13 @@ def latest_record(root: Path) -> dict[str, Any] | None:
     return json.loads(files[-1].read_text(encoding="utf-8"))
 
 
+def record_for_issue(root: Path, issue: str) -> dict[str, Any] | None:
+    p = root / "raw" / issue[:4] / f"{issue}.json"
+    if not p.exists():
+        return None
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
 def archive_blob_url(root: Path, issue: str) -> str | None:
     try:
         remote = subprocess.run(
@@ -154,7 +161,9 @@ def format_xinfeng_message(record: dict[str, Any], link: str | None = None) -> s
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    record = latest_record(root)
+    issue_arg = sys.argv[2].strip() if len(sys.argv) > 2 else ""
+    # 指定期号（workflow_dispatch 传参）就推该期记录；否则推最新期
+    record = record_for_issue(root, issue_arg) if issue_arg else latest_record(root)
     if not record:
         print(f"[warn] no records under {root}/raw; nothing to send")
         return 0

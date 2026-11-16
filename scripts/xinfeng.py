@@ -348,10 +348,18 @@ def fetch_e46(issue: str) -> dict[str, Any] | None:
 _XINFENG_TITLE_RE = re.compile(r"信封快报0*(20\d{5})期3d图谜")
 
 
-def discover_cz89_xinfeng(issue: str, max_pages: int = 10,
+def discover_cz89_xinfeng(issue: str, max_pages: int = 200,
                           base_urls: tuple[str, ...] = (CZ89_LIST_URL, CZ89_MIRROR_HOST + "/3d/item_3.htm")) -> str | None:
-    """在 3D图谜列表里按期号找「信封快报」文章；主源 m.cz89.com，镜像 m.01p.net。"""
+    """在 3D图谜列表里按期号找「信封快报」文章；主源 m.cz89.com，镜像 m.01p.net。
+
+    列表按时间倒序：当期文章 1-2 页内命中即返回；历史期继续翻页直到
+    连续 2 页最大期号 < 目标（与 index 同一停止条件）。
+    另按「首页最新期号−目标期号≈距今天数」估深度上限，未发布的新期
+    不会无限翻页（期号未发→深度估算很小→几页即停）。
+    """
     for base in base_urls:
+        old_streak = 0
+        depth_cap: int | None = None
         for page in range(1, max_pages + 1):
             url = base if page == 1 else f"{base}?p={page}"
             try:
@@ -360,10 +368,27 @@ def discover_cz89_xinfeng(issue: str, max_pages: int = 10,
                 print(f"[warn] cz89-xinfeng list {url}: {exc}")
                 break
             soup = BeautifulSoup(html, "html.parser")
+            page_max = None
             for a in soup.find_all("a", href=True):
-                m = _XINFENG_TITLE_RE.search(re.sub(r"\s+", "", a.get_text()))
+                title = re.sub(r"\s+", "", a.get_text())
+                im = _ANY_ISSUE_RE.search(title)
+                if im:
+                    iss = im.group(1)
+                    page_max = iss if page_max is None or iss > page_max else page_max
+                m = _XINFENG_TITLE_RE.search(title)
                 if m and m.group(1) == issue:
                     return urljoin(url, a["href"])
+            if page == 1 and page_max:
+                age = max(0, int(page_max) - int(issue))
+                depth_cap = min(max_pages, age * 12 + 30)
+            if page_max is None or page_max < issue:
+                old_streak += 1
+                if old_streak >= 2:
+                    break
+            else:
+                old_streak = 0
+            if depth_cap is not None and page >= depth_cap:
+                break
             time.sleep(0.3)
     print(f"[warn] cz89-xinfeng issue {issue} not found in listings")
     return None
