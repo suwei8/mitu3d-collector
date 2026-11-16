@@ -48,6 +48,33 @@ def test_format_message_partial_record():
     assert "采集于 10-06 18:00（北京）" in msg
 
 
+def test_format_message_with_xinfeng():
+    rec = {
+        "issue": "2026305",
+        "status": "candidate",
+        "fields": {"trial_number": "741"},
+        "xinfeng": {
+            "cz89": {
+                "fields": {"seven": "1245678", "six": "124567", "five": "12457", "dan": "217"},
+                "ocr_ok": True,
+            },
+            "e46": {
+                "fields": {"seven": "1275460", "six": "127546", "five": "12754", "dan": "251"},
+                "ocr_ok": False,
+            },
+        },
+        "collected_at": "2026-11-16T13:30:00+00:00",
+    }
+    msg = format_message(rec)
+    assert "信封快报·牛彩版：七1245678 六124567 五12457 胆217" in msg
+    assert "信封快报·打黑版：七1275460 六127546 五12754 胆251（部分待复核）" in msg
+
+
+def test_format_message_without_xinfeng_unchanged():
+    rec = {"issue": "2026265", "status": "candidate", "fields": {"taihu": "某某一语"}}
+    assert "信封快报" not in format_message(rec)
+
+
 def test_latest_record_picks_max_issue(tmp_path):
     raw = tmp_path / "raw" / "2026"
     raw.mkdir(parents=True)

@@ -85,8 +85,13 @@ def format_message(record: dict[str, Any], link: str | None = None) -> str:
     if record.get("status"):
         title += f"（{_esc(record['status'])}）"
     lines = [title]
-    if record.get("draw_result"):
-        lines.append(f"开奖号：<b>{_esc(record['draw_result'])}</b>")
+    draw = record.get("draw_result")
+    if isinstance(draw, dict):
+        draw = draw.get("kaijiang")
+        if draw and (record["draw_result"].get("xingtai")):
+            draw = f"{draw}（{record['draw_result']['xingtai']}）"
+    if draw:
+        lines.append(f"开奖号：<b>{_esc(draw)}</b>")
     lines.append("")
 
     for row in (
@@ -97,6 +102,23 @@ def format_message(record: dict[str, Any], link: str | None = None) -> str:
     ):
         if row:
             lines.append(row)
+
+    xf = record.get("xinfeng") or {}
+    for src, name in (("cz89", "信封快报·牛彩版"), ("e46", "信封快报·打黑版")):
+        v = xf.get(src)
+        if not v:
+            continue
+        f = v.get("fields") or {}
+        parts = [
+            f"{label}{_esc(f[key])}"
+            for key, label in (("seven", "七"), ("six", "六"), ("five", "五"))
+            if f.get(key)
+        ]
+        if f.get("dan"):
+            parts.append(f"胆{_esc(f['dan'])}")
+        if parts:
+            suffix = "" if v.get("ocr_ok") else "（部分待复核）"
+            lines.append(f"{name}：" + " ".join(parts) + suffix)
 
     footer = []
     if record.get("collected_at"):

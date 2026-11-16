@@ -14,8 +14,16 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
+# 兼容 `python scripts/collect.py`（脚本直跑）与 `python -m scripts.collect`（模块）
+if __package__ in (None, ""):
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.xinfeng import collect_xinfeng
+
 # 数据目录默认为本仓库根目录；在 GitHub Actions 中通过 FC3D_ROOT 指向
-# checkout 出来的私有归档仓库（suwei8/fc3d-archive）。
+# checkout 出来的私有归档仓库（suwei8/mitu3d-archive）。
 ROOT = Path(os.environ.get("FC3D_ROOT", Path(__file__).resolve().parents[1]))
 UA = "fc3d-collector/0.1 (+https://github.com/suwei8/fc3d-collector)"
 
@@ -342,7 +350,7 @@ def _is_locked(existing: dict[str, Any] | None, key: str, fields: dict[str, Any]
     return existing.get("status") == "verified" and fields.get(key) is not None
 
 
-def build_record(issue: str, tianqi: dict[str, dict[str, str]], taihu: dict[str, str], cz89: dict[str, Any] | None = None, cz89_url: str | None = None) -> dict[str, Any]:
+def build_record(issue: str, tianqi: dict[str, dict[str, str]], taihu: dict[str, str], cz89: dict[str, Any] | None = None, cz89_url: str | None = None, xinfeng: dict[str, Any] | None = None) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     existing = load_existing(issue)
     fields = {key: None for key in FIELDS}
@@ -406,8 +414,21 @@ def build_record(issue: str, tianqi: dict[str, dict[str, str]], taihu: dict[str,
             ],
         }
 
+    # 信封快报（虎头信封图）：按版本逐条合并；本轮没抓到的版本保留旧条目
+    xf = dict((existing or {}).get("xinfeng") or {})
+    xf.update(xinfeng or {})
+    for src in ("cz89", "e46"):
+        if src in (xinfeng or {}):
+            sources[f"{'cz89-xinfeng' if src == 'cz89' else 'caiba-e46'}"] = {
+                "url": xf[src].get("page_url"),
+                "image_url": xf[src].get("image_url"),
+                "image": xf[src].get("image"),
+                "fetched_at": now,
+                "fields": [f"xinfeng.{src}"],
+            }
+
     status = "verified" if existing and existing.get("status") == "verified" else "candidate"
-    return {
+    record = {
         "issue": issue,
         "status": status,
         "verified_by": existing.get("verified_by") if existing else None,
@@ -418,6 +439,9 @@ def build_record(issue: str, tianqi: dict[str, dict[str, str]], taihu: dict[str,
         "collected_at": now,
         "notes": existing.get("notes", []) if existing else [],
     }
+    if xf:
+        record["xinfeng"] = xf
+    return record
 
 
 def render_md(record: dict[str, Any]) -> str:
@@ -446,10 +470,40 @@ def render_md(record: dict[str, Any]) -> str:
             shown += "（人工修正）"
         lines.append(f"| {LABELS[key]} | {shown} |")
 
+    xf = record.get("xinfeng") or {}
+    if xf:
+        lines.extend([
+            "",
+            "## 信封快报（虎头信封图源）",
+            "",
+            "| 版本 | 七码复试 | 六码复试 | 精选五码 | 胆码 | 识别 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ])
+        for src, name in (("cz89", "牛彩图谜版（升序）"), ("e46", "彩吧E46·打黑版（乱序）")):
+            v = xf.get(src)
+            if not v:
+                continue
+            f = v.get("fields") or {}
+            flag = "完整" if v.get("ocr_ok") else "部分待复核"
+            page = v.get("page_url") or ""
+            lines.append(
+                f"| [{name}]({page}) | {f.get('seven') or '—'} | {f.get('six') or '—'} |"
+                f" {f.get('five') or '—'} | {f.get('dan') or '—'} | {flag} |"
+            )
+        imgs = [f"`{v['image']}`" for v in xf.values() if v.get("image")]
+        if imgs:
+            lines.extend(["", "原图存档：" + "、".join(imgs)])
+        lines.extend([
+            "",
+            "> 字段为图像程序化抽取结果，仅代表来源内容，不构成预测置信度。",
+        ])
+
     lines.extend(["", "## 数据源", ""])
     if record.get("sources"):
         for source_id, meta in record["sources"].items():
-            lines.append(f"- {source_id}: {meta['url']}")
+            # 人工来源条目可能只有 note 没有 url
+            link = meta.get("url") or meta.get("note") or "—"
+            lines.append(f"- {source_id}: {link}")
     else:
         lines.append("- 暂无自动来源记录")
 
@@ -470,7 +524,7 @@ def render_md(record: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-CONTENT_KEYS = ("fields", "draw_result", "status", "verified_by", "locked_fields", "notes")
+CONTENT_KEYS = ("fields", "draw_result", "status", "verified_by", "locked_fields", "notes", "xinfeng")
 
 
 def _norm_sources(sources: dict[str, Any] | None) -> dict[str, Any]:
@@ -520,6 +574,10 @@ def backfill(lo: str, hi: str) -> int:
     # 先建 cz89 汇总大全文章索引（O(页数)），再逐期抓详情页（O(期数)）
     cz89_index = index_cz89_nightly(lo, hi)
 
+    # 信封快报 cz89 版文章索引（E46 版 URL 按规则直拼，无需索引）
+    from scripts.xinfeng import index_cz89_xinfeng
+    xf_index = index_cz89_xinfeng(lo, hi)
+
     # 开奖号：新浪按缺失集合定向翻页；写入时只在缺失才补
     wanted = {
         str(i) for i in range(int(lo), int(hi) + 1)
@@ -538,12 +596,13 @@ def backfill(lo: str, hi: str) -> int:
             if page_html:
                 cz89 = parse_cz89_nightly(page_html)
 
-        has_data = issue in tianqi or issue in taihu or bool(cz89)
+        xinfeng = collect_xinfeng(issue, ROOT, cz89_url=xf_index.get(issue))
+        has_data = issue in tianqi or issue in taihu or bool(cz89) or bool(xinfeng)
         existing = load_existing(issue)
         if not has_data:
             skipped += 1
             continue  # 无效期号/无上游数据：不写垃圾记录，已有记录也不动
-        record = build_record(issue, tianqi, taihu, cz89=cz89, cz89_url=cz89_url)
+        record = build_record(issue, tianqi, taihu, cz89=cz89, cz89_url=cz89_url, xinfeng=xinfeng)
         if not record["draw_result"] and issue in sina_draws:
             record["draw_result"] = sina_draws[issue]
             record["sources"]["sina-open"] = {
@@ -615,16 +674,20 @@ def main() -> int:
             if page_html:
                 cz89 = parse_cz89_nightly(page_html)
 
+    # 信封快报（虎头信封图）图像主线：单源失败只记 warn，不拖垮整批；
+    # 与既有记录的合并在 build_record 里做
+    xinfeng = collect_xinfeng(issue, ROOT)
+
     # 注意按"本期是否命中任一上游"判断：tianqi/taihu 是整表 dict，历史期号查不到行
     # 但表本身非空，若按表判空会为无效期号写出全空字段的垃圾记录。
-    has_data = issue in tianqi or issue in taihu or bool(cz89)
+    has_data = issue in tianqi or issue in taihu or bool(cz89) or bool(xinfeng)
     if not has_data:
         if load_existing(issue):
             print(f"[info] issue {issue} not in upstream pages today; keep existing record")
             return 0
         raise SystemExit(f"No usable upstream data for issue {issue}")
 
-    record = build_record(issue, tianqi, taihu, cz89=cz89, cz89_url=cz89_url)
+    record = build_record(issue, tianqi, taihu, cz89=cz89, cz89_url=cz89_url, xinfeng=xinfeng)
     existing = load_existing(issue)
     if existing and content_unchanged(existing, record):
         print(f"[info] issue {issue} unchanged; keep existing record")
