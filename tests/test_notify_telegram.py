@@ -1,6 +1,6 @@
 import json
 
-from scripts.notify_telegram import format_message, latest_record
+from scripts.notify_telegram import format_message, format_xinfeng_message, latest_record
 
 RECORD = {
     "issue": "2026264",
@@ -48,30 +48,49 @@ def test_format_message_partial_record():
     assert "采集于 10-06 18:00（北京）" in msg
 
 
-def test_format_message_with_xinfeng():
-    rec = {
-        "issue": "2026305",
-        "status": "candidate",
-        "fields": {"trial_number": "741"},
-        "xinfeng": {
-            "cz89": {
-                "fields": {"seven": "1245678", "six": "124567", "five": "12457", "dan": "217"},
-                "ocr_ok": True,
-            },
-            "e46": {
-                "fields": {"seven": "1275460", "six": "127546", "five": "12754", "dan": "251"},
-                "ocr_ok": False,
-            },
+XF_RECORD = {
+    "issue": "2026305",
+    "status": "candidate",
+    "fields": {"trial_number": "741"},
+    "xinfeng": {
+        "cz89": {
+            "fields": {"seven": "1245678", "six": "124567", "five": "12457", "dan": "217"},
+            "ocr_ok": True,
         },
-        "collected_at": "2026-11-16T13:30:00+00:00",
-    }
-    msg = format_message(rec)
-    assert "信封快报·牛彩版：七1245678 六124567 五12457 胆217" in msg
-    assert "信封快报·打黑版：七1275460 六127546 五12754 胆251（部分待复核）" in msg
+        "e46": {
+            "fields": {"seven": "1275460", "six": "127546", "five": "12754", "dan": "251"},
+            "ocr_ok": False,
+        },
+    },
+    "collected_at": "2026-11-16T13:30:00+00:00",
+}
 
 
-def test_format_message_without_xinfeng_unchanged():
+def test_xinfeng_split_out_of_main_message():
+    """信封快报不进主消息，主消息保持原格式。"""
+    msg = format_message(XF_RECORD)
+    assert "信封快报" not in msg
+    assert "1245678" not in msg
+
+
+def test_format_xinfeng_message_both_versions():
+    msg = format_xinfeng_message(XF_RECORD, "https://example.com/x.md")
+    assert "<b>福彩3D 2026305期 · 信封快报</b>" in msg
+    assert "牛彩版（升序）：七码 1245678 · 六码 124567 · 五码 12457 · 胆码 217" in msg
+    assert "打黑版（乱序）：七码 1275460 · 六码 127546 · 五码 12754 · 胆码 251（部分待复核）" in msg
+    assert 'href="https://example.com/x.md"' in msg
+
+
+def test_format_xinfeng_message_partial_ocr_flag():
+    rec = {"issue": "2026306", "xinfeng": {"e46": {"fields": {"seven": "1?34?62"}, "ocr_ok": False}}}
+    msg = format_xinfeng_message(rec)
+    assert "打黑版（乱序）：七码 1?34?62（部分待复核）" in msg
+    assert "牛彩版" not in msg
+
+
+def test_format_xinfeng_message_none_without_xinfeng():
     rec = {"issue": "2026265", "status": "candidate", "fields": {"taihu": "某某一语"}}
+    assert format_xinfeng_message(rec) is None
     assert "信封快报" not in format_message(rec)
 
 

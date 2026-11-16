@@ -103,23 +103,41 @@ def format_message(record: dict[str, Any], link: str | None = None) -> str:
         if row:
             lines.append(row)
 
+    footer = []
+    if record.get("collected_at"):
+        try:
+            cst = datetime.fromisoformat(record["collected_at"]).astimezone(_CST)
+            footer.append(f"采集于 {cst:%m-%d %H:%M}（北京）")
+        except ValueError:
+            pass
+    if link:
+        footer.append(f'<a href="{link}">完整记录</a>')
+    if footer:
+        lines.extend(["", " · ".join(footer)])
+    return "\n".join(lines)
+
+
+def format_xinfeng_message(record: dict[str, Any], link: str | None = None) -> str | None:
+    """信封快报单独成一条推送；无 xinfeng 数据返回 None。"""
     xf = record.get("xinfeng") or {}
-    for src, name in (("cz89", "信封快报·牛彩版"), ("e46", "信封快报·打黑版")):
+    lines = [f"<b>福彩3D {_esc(record['issue'])}期 · 信封快报</b>", ""]
+    for src, name in (("cz89", "牛彩版（升序）"), ("e46", "打黑版（乱序）")):
         v = xf.get(src)
         if not v:
             continue
         f = v.get("fields") or {}
         parts = [
-            f"{label}{_esc(f[key])}"
-            for key, label in (("seven", "七"), ("six", "六"), ("five", "五"))
+            f"{label} {_esc(f[key])}"
+            for key, label in (("seven", "七码"), ("six", "六码"), ("five", "五码"))
             if f.get(key)
         ]
         if f.get("dan"):
-            parts.append(f"胆{_esc(f['dan'])}")
+            parts.append(f"胆码 {_esc(f['dan'])}")
         if parts:
             suffix = "" if v.get("ocr_ok") else "（部分待复核）"
-            lines.append(f"{name}：" + " ".join(parts) + suffix)
-
+            lines.append(f"{name}：" + " · ".join(parts) + suffix)
+    if len(lines) <= 2:
+        return None
     footer = []
     if record.get("collected_at"):
         try:
@@ -147,22 +165,28 @@ def main() -> int:
         print("[error] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set")
         return 1
 
-    text = format_message(record, archive_blob_url(root, record["issue"]))
-    r = requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-        timeout=15,
-    )
-    ok = r.status_code == 200 and r.json().get("ok")
-    if not ok:
-        print(f"[error] telegram sendMessage failed: {r.status_code} {r.text[:300]}")
-        return 1
-    print(f"[ok] sent issue {record['issue']} to chat {chat_id}")
+    link = archive_blob_url(root, record["issue"])
+    # 主消息保持原格式；信封快报拆成独立第二条
+    texts = [format_message(record, link)]
+    xf_text = format_xinfeng_message(record, link)
+    if xf_text:
+        texts.append(xf_text)
+    for text in texts:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            timeout=15,
+        )
+        ok = r.status_code == 200 and r.json().get("ok")
+        if not ok:
+            print(f"[error] telegram sendMessage failed: {r.status_code} {r.text[:300]}")
+            return 1
+    print(f"[ok] sent issue {record['issue']} to chat {chat_id} ({len(texts)} msgs)")
     return 0
 
 
