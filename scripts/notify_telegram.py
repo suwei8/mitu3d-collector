@@ -86,7 +86,30 @@ def _join(fields: dict[str, Any], pairs: list[tuple[str, str]]) -> str:
     return " · ".join(items)
 
 
-def format_message(record: dict[str, Any], link: str | None = None) -> str:
+def _xinfeng_inline(record: dict[str, Any]) -> list[str]:
+    """合并版内联格式：信封快报·牛彩版：七.. 六.. 五.. 胆.."""
+    xf = record.get("xinfeng") or {}
+    lines = []
+    for src, name in (("cz89", "信封快报·牛彩版"), ("e46", "信封快报·打黑版")):
+        v = xf.get(src)
+        if not v:
+            continue
+        f = v.get("fields") or {}
+        parts = [
+            f"{label}{_esc(f[key])}"
+            for key, label in (("seven", "七"), ("six", "六"), ("five", "五"))
+            if f.get(key)
+        ]
+        if f.get("dan"):
+            parts.append(f"胆{_esc(f['dan'])}")
+        if parts:
+            suffix = "" if v.get("ocr_ok") else "（部分待复核）"
+            lines.append(f"{name}：" + " ".join(parts) + suffix)
+    return lines
+
+
+def format_message(record: dict[str, Any], link: str | None = None,
+                   include_xinfeng: bool = False) -> str:
     fields = record.get("fields") or {}
     title = f"<b>福彩3D {_esc(record['issue'])}期</b>"
     if record.get("status"):
@@ -109,6 +132,9 @@ def format_message(record: dict[str, Any], link: str | None = None) -> str:
     ):
         if row:
             lines.append(row)
+
+    if include_xinfeng:
+        lines.extend(_xinfeng_inline(record))
 
     footer = []
     if record.get("collected_at"):
@@ -175,11 +201,12 @@ def main() -> int:
         return 1
 
     link = archive_blob_url(root, record["issue"])
-    # 主消息保持原格式；信封快报拆成独立第二条
+    # 三条：主消息原格式 → 信封快报独立 → 合并版（原内联样式）
     texts = [format_message(record, link)]
     xf_text = format_xinfeng_message(record, link)
     if xf_text:
         texts.append(xf_text)
+        texts.append(format_message(record, link, include_xinfeng=True))
     for text in texts:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",

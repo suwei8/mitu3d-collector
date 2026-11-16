@@ -94,6 +94,14 @@ def test_format_xinfeng_message_none_without_xinfeng():
     assert "信封快报" not in format_message(rec)
 
 
+def test_merged_message_inline_xinfeng():
+    """合并版：主格式 + 信封快报内联行（旧样式）。"""
+    msg = format_message(XF_RECORD, include_xinfeng=True)
+    assert "试机号 741" in msg
+    assert "信封快报·牛彩版：七1245678 六124567 五12457 胆217" in msg
+    assert "信封快报·打黑版：七1275460 六127546 五12754 胆251（部分待复核）" in msg
+
+
 def test_latest_record_picks_max_issue(tmp_path):
     raw = tmp_path / "raw" / "2026"
     raw.mkdir(parents=True)
