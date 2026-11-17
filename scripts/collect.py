@@ -445,6 +445,9 @@ def build_record(issue: str, tianqi: dict[str, dict[str, str]], taihu: dict[str,
         "collected_at": now,
         "notes": existing.get("notes", []) if existing else [],
     }
+    # 开奖后复盘属人工追加内容，必须随记录继承，否则下次采集会被覆盖
+    if existing and existing.get("review"):
+        record["review"] = existing["review"]
     if xf:
         record["xinfeng"] = xf
     return record
@@ -459,11 +462,13 @@ def render_md(record: dict[str, Any]) -> str:
         "",
     ]
     draw = record.get("draw_result")
-    # draw_result 两种形态：纯号码字符串，或 user_report 对象 {"kaijiang": "085", ...}
+    # draw_result 两种形态：纯号码字符串，或 user_report 对象 {"kaijiang": "085", "xingtai": "组六", ...}
+    draw_xt = None
     if isinstance(draw, dict):
+        draw_xt = draw.get("xingtai")
         draw = draw.get("kaijiang") or None
     if draw:
-        lines.extend([f"> 开奖号：**{draw}**", ""])
+        lines.extend([f"> 开奖号：**{draw}**（{draw_xt}）" if draw_xt else f"> 开奖号：**{draw}**", ""])
     lines.extend([
         "| 字段 | 数据 |",
         "| --- | --- |",
@@ -527,10 +532,12 @@ def render_md(record: dict[str, Any]) -> str:
         "- 已人工确认的字段不会被后续自动采集覆盖。",
         "",
     ])
+    if record.get("review"):
+        lines.extend(["---", "", record["review"].rstrip(), ""])
     return "\n".join(lines)
 
 
-CONTENT_KEYS = ("fields", "draw_result", "status", "verified_by", "locked_fields", "notes", "xinfeng")
+CONTENT_KEYS = ("fields", "draw_result", "status", "verified_by", "locked_fields", "notes", "xinfeng", "review")
 
 
 def _norm_sources(sources: dict[str, Any] | None) -> dict[str, Any]:
