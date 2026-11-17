@@ -76,15 +76,15 @@ def test_xinfeng_split_out_of_main_message():
 def test_format_xinfeng_message_both_versions():
     msg = format_xinfeng_message(XF_RECORD, "https://example.com/x.md")
     assert "<b>福彩3D 2026305期 · 信封快报</b>" in msg
-    assert "牛彩版（升序）：七码 1245678 · 六码 124567 · 五码 12457 · 胆码 217" in msg
-    assert "打黑版（乱序）：七码 1275460 · 六码 127546 · 五码 12754 · 胆码 251（部分待复核）" in msg
+    assert "信封快报·牛彩版（升序）\n七码 1245678\n六码 124567\n五码 12457\n胆码 217" in msg
+    assert "信封快报·打黑版（乱序）（部分待复核）\n七码 1275460\n六码 127546\n五码 12754\n胆码 251" in msg
     assert 'href="https://example.com/x.md"' in msg
 
 
 def test_format_xinfeng_message_partial_ocr_flag():
     rec = {"issue": "2026306", "xinfeng": {"e46": {"fields": {"seven": "1?34?62"}, "ocr_ok": False}}}
     msg = format_xinfeng_message(rec)
-    assert "打黑版（乱序）：七码 1?34?62（部分待复核）" in msg
+    assert "信封快报·打黑版（乱序）（部分待复核）\n七码 1?34?62" in msg
     assert "牛彩版" not in msg
 
 
@@ -95,11 +95,11 @@ def test_format_xinfeng_message_none_without_xinfeng():
 
 
 def test_merged_message_inline_xinfeng():
-    """合并版：主格式 + 信封快报内联行（旧样式）。"""
+    """合并版：主格式 + 信封快报块（逐字段换行）。"""
     msg = format_message(XF_RECORD, include_xinfeng=True)
     assert "试机号 741" in msg
-    assert "信封快报·牛彩版：七1245678 六124567 五12457 胆217" in msg
-    assert "信封快报·打黑版：七1275460 六127546 五12754 胆251（部分待复核）" in msg
+    assert "信封快报·牛彩版（升序）\n七码 1245678\n六码 124567\n五码 12457\n胆码 217" in msg
+    assert "信封快报·打黑版（乱序）（部分待复核）\n七码 1275460\n六码 127546\n五码 12754\n胆码 251" in msg
 
 
 def test_latest_record_picks_max_issue(tmp_path):

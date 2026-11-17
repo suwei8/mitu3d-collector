@@ -87,24 +87,23 @@ def _join(fields: dict[str, Any], pairs: list[tuple[str, str]]) -> str:
 
 
 def _xinfeng_inline(record: dict[str, Any]) -> list[str]:
-    """合并版内联格式：信封快报·牛彩版：七.. 六.. 五.. 胆.."""
+    """合并版内联块：每版独立小标题、逐字段换行。"""
     xf = record.get("xinfeng") or {}
     lines = []
-    for src, name in (("cz89", "信封快报·牛彩版"), ("e46", "信封快报·打黑版")):
+    for src, name in (("cz89", "信封快报·牛彩版（升序）"), ("e46", "信封快报·打黑版（乱序）")):
         v = xf.get(src)
         if not v:
             continue
         f = v.get("fields") or {}
-        parts = [
-            f"{label}{_esc(f[key])}"
-            for key, label in (("seven", "七"), ("six", "六"), ("five", "五"))
-            if f.get(key)
-        ]
-        if f.get("dan"):
-            parts.append(f"胆{_esc(f['dan'])}")
-        if parts:
-            suffix = "" if v.get("ocr_ok") else "（部分待复核）"
-            lines.append(f"{name}：" + " ".join(parts) + suffix)
+        if not any(f.get(k) for k in ("seven", "six", "five", "dan")):
+            continue
+        if lines:
+            lines.append("")
+        suffix = "" if v.get("ocr_ok") else "（部分待复核）"
+        lines.append(f"{name}{suffix}")
+        for key, label in (("seven", "七码"), ("six", "六码"), ("five", "五码"), ("dan", "胆码")):
+            if f.get(key):
+                lines.append(f"{label} {_esc(f[key])}")
     return lines
 
 
@@ -134,7 +133,9 @@ def format_message(record: dict[str, Any], link: str | None = None,
             lines.append(row)
 
     if include_xinfeng:
-        lines.extend(_xinfeng_inline(record))
+        xf_lines = _xinfeng_inline(record)
+        if xf_lines:
+            lines.extend(["", *xf_lines])
 
     footer = []
     if record.get("collected_at"):
@@ -154,23 +155,10 @@ def format_xinfeng_message(record: dict[str, Any], link: str | None = None) -> s
     """信封快报单独成一条推送；无 xinfeng 数据返回 None。"""
     xf = record.get("xinfeng") or {}
     lines = [f"<b>福彩3D {_esc(record['issue'])}期 · 信封快报</b>", ""]
-    for src, name in (("cz89", "牛彩版（升序）"), ("e46", "打黑版（乱序）")):
-        v = xf.get(src)
-        if not v:
-            continue
-        f = v.get("fields") or {}
-        parts = [
-            f"{label} {_esc(f[key])}"
-            for key, label in (("seven", "七码"), ("six", "六码"), ("five", "五码"))
-            if f.get(key)
-        ]
-        if f.get("dan"):
-            parts.append(f"胆码 {_esc(f['dan'])}")
-        if parts:
-            suffix = "" if v.get("ocr_ok") else "（部分待复核）"
-            lines.append(f"{name}：" + " · ".join(parts) + suffix)
-    if len(lines) <= 2:
+    body = _xinfeng_inline(record)
+    if not body:
         return None
+    lines.extend(body)
     footer = []
     if record.get("collected_at"):
         try:
