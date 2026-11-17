@@ -111,6 +111,35 @@ def test_parse_cz89_nightly_2026263_current_shape():
     }
 
 
+def test_parse_cz89_nightly_bottom_slot_alternate_site():
+    """2026307 实测版式：底部槽位换成'彩宝网关注码'，金码仍在其后。"""
+    html = """
+    <html><body>
+      <p>千禧3D试机号2026年307期：</p>
+      <p>试机号214</p>
+      <p>关注码735</p>
+      <p>金码3</p>
+      <p>对应码：[127]</p>
+      <p>牛彩关注码 4,9,5</p>
+      <p>彩宝网关注码：0,8</p>
+      <p>金码：2</p>
+      <p>北京试机号谜语 照镜子</p>
+      <p>另版北京试机号谜语 绝缘体</p>
+      <p>太湖一语定胆 十里挑一</p>
+    </body></html>
+    """
+    assert parse_cz89_nightly(html) == {
+        "trial_number": "214",
+        "focus": "735",
+        "gold": "3",
+        "corresponding": "127",
+        "beijing": "照镜子",
+        "beijing_alt": "绝缘体",
+        "bottom_focus": ["0", "8"],
+        "bottom_gold": "2",
+    }
+
+
 def test_discover_cz89_historical_2026257_from_archive_page():
     html = """
     <html><body>

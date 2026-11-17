@@ -306,8 +306,14 @@ def parse_cz89_nightly(html: str) -> dict[str, Any]:
     if beijing_alt:
         result["beijing_alt"] = beijing_alt.group(1).strip()
 
+    # 底部关注码槽位：历史上固定是"牛彩网关注码：A,B"，个别期换成其他站
+    # （如 2026307 的"彩宝网关注码：0,8"）。先认牛彩网，缺席时接受任意
+    # "X网关注码："行；"牛彩关注码 4,9,5"（无网、三位、无冒号）不匹配。
     bottom_focus = re.search(
         r"(?m)^牛彩网关注码\s*[:：]\s*([0-9０-９,，、\s]+?)\s*$",
+        text,
+    ) or re.search(
+        r"(?m)^[一-龥]{1,4}网关注码\s*[:：]\s*([0-9０-９,，、\s]+?)\s*$",
         text,
     )
     if bottom_focus:
