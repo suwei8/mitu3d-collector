@@ -163,7 +163,7 @@ def cell_glyphs(gray, layout: dict, row: str) -> list:
             if sz < 6:
                 continue  # JPEG 噪点
             ys2, xs2 = np.where(lab == i + 1)
-            gh, gw = ys2.ptp() + 1, xs2.ptp() + 1
+            gh, gw = int(ys2.max() - ys2.min()) + 1, int(xs2.max() - xs2.min()) + 1
             touches_edge = (ys2[0] == 0 or xs2[0] == 0
                             or ys2[-1] == b.shape[0] - 1 or xs2[-1] == b.shape[1] - 1)
             if touches_edge and (gh >= b.shape[0] * 0.85 or gw >= b.shape[1] * 0.85):
