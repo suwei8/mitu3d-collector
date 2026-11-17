@@ -83,21 +83,93 @@ def templates() -> dict[str, list]:
 
 # ------------------------------------------------------------- glyph extract
 
-def cell_glyphs(gray, layout: dict, row: str) -> list:
-    """按固定格位裁出该行 n 个数字字形（缺格给 None）。
+def _detect_grid(gray, layout: dict, row: str) -> list[tuple[int, int]] | None:
+    """在行带内拟合竖边框网格，返回 n 个格子的 (x0,x1) 内区；失败返回 None。
 
-    格子边框排除在格内区之外；JPEG 噪声造成的孤立小点由 min 面积过滤。
+    同源图存在不同导出尺寸（450x433 / 494x479 等），比例坐标会偏移。
+    先取「列暗度>65%」的候选边框线，再穷举 (起点, 间距) 找一条覆盖
+    n+1 个边框位的等距网格——允许至多一条边框由外推补齐（外侧框
+    常偏淡），要求至少 n 个边框位有实测线佐证。
     """
     import numpy as np
 
     h, w = gray.shape
     fy0, fy1, n = layout["rows"][row]
+    band = gray[int(h * fy0):int(h * fy1), :]
+    bh = band.shape[0]
+    colsum = (band < 210).sum(0)
+    cand = np.where(colsum > bh * 0.65)[0]
+    lines: list[int] = []
+    for x in cand:
+        if lines and x - lines[-1] <= 3:
+            continue
+        lines.append(int(x))
+    if len(lines) < n:
+        return None
+    exp_x0 = layout["cell_x0"] * w
+    pitch0 = layout["cell_pitch"] * w
+    best = None
+    for p0 in range(int(exp_x0) - 25, int(exp_x0) + 25):
+        for pi in np.arange(pitch0 * 0.85, pitch0 * 1.15, 0.5):
+            borders = [p0 + k * pi for k in range(n + 1)]
+            if borders[-1] > w * 0.93:
+                continue
+            matched, dark = 0, 0.0
+            for b in borders:
+                near = [l for l in lines if abs(l - b) <= 4]
+                if near:
+                    matched += 1
+                    dark += float(colsum[min(near, key=lambda l: abs(l - b))])
+            if matched < n:
+                continue
+            score = (matched, dark, -abs(p0 - exp_x0))
+            if best is None or score > best[0]:
+                best = (score, borders)
+    if best is None:
+        return None
+    seg = [int(round(b)) for b in best[1]]
+    return [(seg[k] + 2, seg[k + 1] - 2) for k in range(n)]
+
+
+def cell_glyphs(gray, layout: dict, row: str) -> list:
+    """按格位裁出该行 n 个数字字形（缺格给 None）。
+
+    先用行内竖边框自校准格网（容忍不同导出尺寸），失败回退比例坐标；
+    格子边框排除在格内区之外；孤立小点由 min 面积过滤。
+    """
+    import numpy as np
+
+    h, w = gray.shape
+    fy0, fy1, n = layout["rows"][row]
+    cells = _detect_grid(gray, layout, row)
+    if cells is None:
+        cells = [
+            (
+                int(w * (layout["cell_x0"] + k * layout["cell_pitch"])),
+                int(w * (layout["cell_x0"] + k * layout["cell_pitch"] + layout["cell_w"])),
+            )
+            for k in range(n)
+        ]
     out = []
-    for k in range(n):
-        x0 = int(w * (layout["cell_x0"] + k * layout["cell_pitch"]))
-        x1 = int(w * (layout["cell_x0"] + k * layout["cell_pitch"] + layout["cell_w"]))
+    for x0, x1 in cells:
         cell = gray[int(h * fy0):int(h * fy1), x0:x1]
         b = cell < DARK
+        if b.sum() < 20:
+            out.append(None)
+            continue
+        lab, sizes = _components(b)
+        keep = set()
+        for i, sz in enumerate(sizes):
+            if sz < 6:
+                continue  # JPEG 噪点
+            ys2, xs2 = np.where(lab == i + 1)
+            gh, gw = ys2.ptp() + 1, xs2.ptp() + 1
+            touches_edge = (ys2[0] == 0 or xs2[0] == 0
+                            or ys2[-1] == b.shape[0] - 1 or xs2[-1] == b.shape[1] - 1)
+            if touches_edge and (gh >= b.shape[0] * 0.85 or gw >= b.shape[1] * 0.85):
+                continue  # 贴边的长条边框残线
+            keep.add(i + 1)
+        b = np.isin(lab, list(keep))
         if b.sum() < 20:
             out.append(None)
             continue
@@ -183,20 +255,19 @@ def circle_glyphs(rgb, x0: int, y0: int, x1: int, y1: int, n: int = 3) -> list:
 # -------------------------------------------------------------- classify
 
 def _normalize(glyph):
-    """字形缩放到 44px 高、水平居中放入 44x32 画布。"""
+    """字形等比缩放到 44x32 画布内（保宽高比、水平居中、垂直铺满）。"""
     from PIL import Image
     import numpy as np
 
     h, w = glyph.shape
-    nw = max(1, round(w * CANVAS_H / h))
-    im = Image.fromarray((255 - glyph * 255).astype("uint8")).resize((nw, CANVAS_H), Image.LANCZOS)
+    scale = min(CANVAS_H / h, CANVAS_W / w)
+    nh, nw = max(1, round(h * scale)), max(1, round(w * scale))
+    im = Image.fromarray((255 - glyph * 255).astype("uint8")).resize((nw, nh), Image.LANCZOS)
     arr = (np.array(im) < 128).astype("uint8")
     canvas = np.zeros((CANVAS_H, CANVAS_W), "uint8")
-    if nw <= CANVAS_W:
-        off = (CANVAS_W - nw) // 2
-        canvas[:, off:off + nw] = arr
-    else:
-        canvas = arr[:, :CANVAS_W]
+    oy = (CANVAS_H - nh) // 2
+    ox = (CANVAS_W - nw) // 2
+    canvas[oy:oy + nh, ox:ox + nw] = arr
     return canvas
 
 

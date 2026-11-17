@@ -22,6 +22,20 @@ def test_extract_fields_cz89_fixture():
     assert r["ocr_ok"] is True
 
 
+def test_extract_fields_cz89_494x479_variant():
+    """494x479 导出变体：比例格位偏移时靠边框网格自校准；噪点不撑爆 bbox。"""
+    r = xinfeng.extract_fields(
+        (FIXTURES / "xinfeng_cz89_2026307.jpg").read_bytes(), "cz89"
+    )
+    assert r["fields"] == {
+        "seven": "0135678",
+        "six": "013567",
+        "five": "01357",
+        "dan": "305",
+    }
+    assert r["ocr_ok"] is True
+
+
 def test_extract_fields_e46_fixture():
     r = xinfeng.extract_fields(
         (FIXTURES / "xinfeng_e46_2026305.jpg").read_bytes(), "e46"
