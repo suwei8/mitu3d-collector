@@ -638,6 +638,8 @@ def backfill(lo: str, hi: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--issue", help="期号，例如 2026263；省略则取上游最新期")
+    parser.add_argument("--next-issue", action="store_true",
+                        help="午间预告：采集上游最新期+1（信封快报前夜已上架）；未发布则跳过不报错")
     parser.add_argument("--from", dest="from_issue", help="回填起始期号（配合 --to）")
     parser.add_argument("--to", dest="to_issue", help="回填结束期号（配合 --from）")
     parser.add_argument("--tianqi-file", help="离线调试：读取天齐 HTML")
@@ -646,6 +648,8 @@ def main() -> int:
     parser.add_argument("--cz89-page-file", help="离线调试：直接读取牛彩网晚间字谜页 HTML")
     args = parser.parse_args()
 
+    if args.issue and args.next_issue:
+        parser.error("--issue 与 --next-issue 互斥")
     if args.from_issue and args.to_issue:
         return backfill(args.from_issue, args.to_issue)
 
@@ -663,6 +667,8 @@ def main() -> int:
     tianqi = parse_tianqi(tianqi_html) if tianqi_html else {}
     taihu = parse_taihu(taihu_html) if taihu_html else {}
     issue = args.issue or newest_issue(tianqi, taihu)
+    if args.next_issue:
+        issue = str(int(issue) + 1)
 
     if issue not in tianqi and issue not in taihu and not load_existing(issue):
         print(f"[warn] issue {issue} absent from primary upstream pages; trying cz89")
@@ -697,6 +703,9 @@ def main() -> int:
     if not has_data:
         if load_existing(issue):
             print(f"[info] issue {issue} not in upstream pages today; keep existing record")
+            return 0
+        if args.next_issue:
+            print(f"[info] next issue {issue} not published upstream yet; skip")
             return 0
         raise SystemExit(f"No usable upstream data for issue {issue}")
 

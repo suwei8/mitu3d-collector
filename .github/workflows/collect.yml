@@ -15,6 +15,11 @@ on:
         description: "回填结束期号（如 2026263），配合 from_issue 使用"
         required: false
         type: string
+      next_issue:
+        description: "午间预告：采集上游最新期+1（信封快报前夜已上架）；未发布则跳过"
+        required: false
+        type: boolean
+        default: false
       test_notify:
         description: "测试：跳过变更检查，强制推送最新一期到 Telegram"
         required: false
@@ -30,6 +35,8 @@ on:
     # 北京时间 21:30、22:10：当天 21:15 已开奖，补采最新期开奖号（collect.py 只在缺失时回填）。
     - cron: "30 13 * * *"
     - cron: "10 14 * * *"
+    # 北京时间 12:00 午间档：cz89 汇总/字谜上午已陆续更新；信封快报两版前夜上架。
+    - cron: "0 4 * * *"
 
 permissions:
   contents: read
@@ -77,10 +84,13 @@ jobs:
           ISSUE: ${{ inputs.issue }}
           FROM_ISSUE: ${{ inputs.from_issue }}
           TO_ISSUE: ${{ inputs.to_issue }}
+          NEXT_ISSUE: ${{ inputs.next_issue }}
         run: |
           if [ -n "$FROM_ISSUE" ] && [ -n "$TO_ISSUE" ]; then
             # 回填模式：cz89 列表索引 + 太湖翻页 + 新浪开奖一次搞定，跨年无效期号自动跳过
             python collector/scripts/collect.py --from "$FROM_ISSUE" --to "$TO_ISSUE"
+          elif [ "$NEXT_ISSUE" = "true" ]; then
+            python collector/scripts/collect.py --next-issue
           elif [ -n "$ISSUE" ]; then
             python collector/scripts/collect.py --issue "$ISSUE"
           else

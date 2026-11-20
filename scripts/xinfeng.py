@@ -451,7 +451,7 @@ def discover_cz89_xinfeng(issue: str, max_pages: int = 200,
                     return urljoin(url, a["href"])
             if page == 1 and page_max:
                 age = max(0, int(page_max) - int(issue))
-                depth_cap = min(max_pages, age * 12 + 30)
+                depth_cap = min(max_pages, age * 30 + 40)
             if page_max is None or page_max < issue:
                 old_streak += 1
                 if old_streak >= 2:

@@ -1,6 +1,6 @@
 # mitu3d-collector
 
-福彩3D 数据采集器。定时运行（北京时间 18:25 / 18:55 / 19:35 / 21:30 / 22:10），
+福彩3D 数据采集器。定时运行（北京时间 12:00 / 18:25 / 18:55 / 19:35 / 21:30 / 22:10），
 从天齐网、彩之家、牛彩网等公开来源采集试机号与字谜数据。
 
 本仓库只存放采集代码与调度工作流，**不存储数据**。采集结果由 GitHub Actions
@@ -60,4 +60,6 @@ FC3D_ROOT=/path/to/mitu3d-archive python scripts/collect.py
 Actions → collect → Run workflow，可选参数：
 
 - `issue`：采集指定期号
+- `next_issue`：午间预告——采集上游最新期+1（信封快报两版前夜已上架），
+  未发布则跳过不写记录；常与 `test_notify` 同勾，保证午间必有推送
 - `from_issue` / `to_issue`：区间回填
