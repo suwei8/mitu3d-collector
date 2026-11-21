@@ -334,7 +334,11 @@ def extract_fields(image_bytes: bytes, layout_key: str) -> dict[str, Any]:
     fields["dan"] = "".join(digs) if digs else None
     scores["dan"] = round(worst, 4)
 
-    ok = all(v is not None and "?" not in v for v in fields.values())
+    # 复试行内数字必然不重复（各行是独立预测，无逐级子集关系）；
+    # 出现重复即误识，降级待复核而非自信推错值。
+    rows = [fields[r] for r in ("seven", "six", "five")]
+    consistent = all(v is None or len(set(v)) == len(v) for v in rows)
+    ok = all(v is not None and "?" not in v for v in fields.values()) and consistent
     return {"fields": fields, "ocr_ok": ok, "worst_score": scores}
 
 
