@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,46 @@ def test_discover_cz89_xinfeng_parses_listing(monkeypatch):
         == "https://m.cz89.com/read_2.htm"
     )
     assert xinfeng.discover_cz89_xinfeng("2026307") is None
+
+
+def test_discover_cz89_xinfeng_target_ahead_of_mainstream(monkeypatch):
+    """目标期比列表主流新一期（--next-issue 场景）：整页上一期内容
+    不算"越过时代"，文章埋在十几页也要扫到。"""
+    pages = {}
+    # p1-p10：全是上一期（311）的文章；p11：出现目标期（312）信封快报
+    for p in range(1, 12):
+        if p == 11:
+            pages[p] = '<a href="/read_312.htm">信封快报2026312期3d图谜</a>'
+        else:
+            pages[p] = f'<a href="/read_{p}.htm">某某图谜2026311期3d图谜</a>'
+
+    def fake_get(url, **kw):
+        m = re.search(r"p=(\d+)", url)
+        return pages[int(m.group(1))] if m else pages[1]
+
+    monkeypatch.setattr(xinfeng, "_get", fake_get)
+    monkeypatch.setattr(xinfeng.time, "sleep", lambda *_: None)
+    assert (
+        xinfeng.discover_cz89_xinfeng("2026312")
+        == "https://m.cz89.com/read_312.htm"
+    )
+
+
+def test_discover_cz89_xinfeng_stops_after_two_old_pages(monkeypatch):
+    """整页期号 ≤ 目标期-2 连续 2 页才算越过时代停止。"""
+    pages = {
+        1: '<a href="/a.htm">图谜2026312期3d图谜</a>',
+        2: '<a href="/b.htm">图谜2026310期3d图谜</a>',
+        3: '<a href="/c.htm">图谜2026310期3d图谜</a>',
+    }
+
+    def fake_get(url, **kw):
+        m = re.search(r"p=(\d+)", url)
+        return pages[int(m.group(1))] if m else pages[1]
+
+    monkeypatch.setattr(xinfeng, "_get", fake_get)
+    monkeypatch.setattr(xinfeng.time, "sleep", lambda *_: None)
+    assert xinfeng.discover_cz89_xinfeng("2026312") is None
 
 
 def test_fetch_cz89_reads_lazyload_img(monkeypatch):

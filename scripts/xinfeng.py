@@ -427,10 +427,11 @@ def discover_cz89_xinfeng(issue: str, max_pages: int = 200,
                           base_urls: tuple[str, ...] = (CZ89_LIST_URL, CZ89_MIRROR_HOST + "/3d/item_3.htm")) -> str | None:
     """在 3D图谜列表里按期号找「信封快报」文章；主源 m.cz89.com，镜像 m.01p.net。
 
-    列表按时间倒序：当期文章 1-2 页内命中即返回；历史期继续翻页直到
-    连续 2 页最大期号 < 目标（与 index 同一停止条件）。
-    另按「首页最新期号−目标期号≈距今天数」估深度上限，未发布的新期
-    不会无限翻页（期号未发→深度估算很小→几页即停）。
+    列表按时间倒序但混排多期文章：当期文章命中即返回；否则继续翻页直到
+    连续 2 页最大期号 ≤ 目标期-2——整页全是前两期及更早才算越过时代；
+    过渡期列表主流是上一期（issue-1），整页上一期内容不代表目标期没发，
+    不能提前停（--next-issue 午间探采正是这个场景）。
+    另按「首页最新期号−目标期号≈距今天数」估深度上限，兜底防无限翻页。
     """
     for base in base_urls:
         old_streak = 0
@@ -456,7 +457,7 @@ def discover_cz89_xinfeng(issue: str, max_pages: int = 200,
             if page == 1 and page_max:
                 age = max(0, int(page_max) - int(issue))
                 depth_cap = min(max_pages, age * 30 + 40)
-            if page_max is None or page_max < issue:
+            if page_max is None or int(page_max) <= int(issue) - 2:
                 old_streak += 1
                 if old_streak >= 2:
                     break
