@@ -150,13 +150,10 @@ def cell_glyphs(gray, layout: dict, row: str) -> list:
             )
             for k in range(n)
         ]
-    out = []
-    for x0, x1 in cells:
-        cell = gray[int(h * fy0):int(h * fy1), x0:x1]
+    def _glyph_from(cell) -> np.ndarray | None:
         b = cell < DARK
         if b.sum() < 20:
-            out.append(None)
-            continue
+            return None
         lab, sizes = _components(b)
         keep = set()
         for i, sz in enumerate(sizes):
@@ -171,11 +168,21 @@ def cell_glyphs(gray, layout: dict, row: str) -> list:
             keep.add(i + 1)
         b = np.isin(lab, list(keep))
         if b.sum() < 20:
-            out.append(None)
-            continue
+            return None
         ys = np.where(b.any(1))[0]
         xs = np.where(b.any(0))[0]
-        out.append(b[ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1].astype("uint8"))
+        return b[ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1].astype("uint8")
+
+    out = []
+    for x0, x1 in cells:
+        cell = _glyph_from(gray[int(h * fy0):int(h * fy1), x0:x1])
+        if cell is None:
+            # 部分导出尺寸下字身超出比例行带（如五码 "1" 下沿被裁），
+            # 纵向扩边重提一次——贴边长线仍由边框过滤器剔除。
+            y0 = max(0, int(h * fy0) - 4)
+            y1 = min(h, int(h * fy1) + 8)
+            cell = _glyph_from(gray[y0:y1, x0:x1])
+        out.append(cell)
     return out
 
 
